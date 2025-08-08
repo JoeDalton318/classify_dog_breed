@@ -10,7 +10,7 @@ import os
 
 # Configuration de la page
 st.set_page_config(
-    page_title="🐕 Classificateur de Chiens",
+    page_title="Classificateur de Chiens",
     page_icon="🐕",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -74,32 +74,51 @@ st.markdown("""
 if 'history' not in st.session_state:
     st.session_state.history = []
 
-# Fonction pour simuler la classification (à remplacer par votre vrai modèle)
+# Import des utilitaires du modèle
+from utils.model_utils import (
+    load_model, 
+    classify_dog_breed_with_model, 
+    simulate_classification,
+    get_model_info,
+    validate_image
+)
+
+# Chargement du modèle au démarrage
+@st.cache_resource
+def load_dog_model():
+    """Charge le modèle de classification de chiens"""
+    return load_model()
+
+# Initialisation du modèle
+model = load_dog_model()
+
+# Fonction de classification avec gestion d'erreurs
 def classify_dog_breed(image):
     """
-    Simulation de classification de race de chien.
-    À remplacer par votre vrai modèle de ML.
+    Classification de race de chien avec le vrai modèle ou simulation
     """
-    # Races de chiens populaires
-    breeds = [
-        "Bulldog Français", "Malinois", "Golden Retriever", "Labrador", 
-        "Berger Allemand", "Chihuahua", "Yorkshire", "Caniche", 
-        "Husky", "Border Collie", "Rottweiler", "Doberman"
-    ]
+    # Validation de l'image
+    is_valid, message = validate_image(image)
+    if not is_valid:
+        st.error(f"❌ {message}")
+        return {}
     
-    # Simulation de résultats avec des pourcentages réalistes
-    np.random.seed(hash(image.tobytes()) % 2**32)
-    scores = np.random.dirichlet(np.ones(len(breeds))) * 100
-    
-    # Créer un dictionnaire des résultats
-    results = {}
-    for breed, score in zip(breeds, scores):
-        results[breed] = round(score, 1)
-    
-    # Trier par pourcentage décroissant
-    sorted_results = dict(sorted(results.items(), key=lambda x: x[1], reverse=True))
-    
-    return sorted_results
+    # Utiliser le vrai modèle si disponible, sinon simulation
+    if model is not None:
+        try:
+            results = classify_dog_breed_with_model(image, model)
+            if results:
+                return results
+            else:
+                st.warning("⚠️ Erreur lors de la classification avec le modèle. Utilisation de la simulation.")
+                return simulate_classification(image)
+        except Exception as e:
+            st.error(f"❌ Erreur du modèle: {str(e)}")
+            st.info("🔄 Utilisation de la simulation...")
+            return simulate_classification(image)
+    else:
+        st.info("🤖 Utilisation du modèle de simulation (vrai modèle non disponible)")
+        return simulate_classification(image)
 
 # Fonction pour sauvegarder l'historique
 def save_to_history(image, results, timestamp):
@@ -219,6 +238,21 @@ with st.sidebar:
     - Historique des analyses
     - Interface moderne et intuitive
     """)
+    
+    # Informations sur le modèle
+    st.markdown("### 🤖 État du modèle")
+    model_info = get_model_info()
+    
+    if model_info["model_loaded"]:
+        st.success("✅ Modèle chargé avec succès")
+        st.metric("Taille du fichier", f"{model_info['file_size'] / 1024 / 1024:.1f} MB")
+        if "model_type" in model_info:
+            st.metric("Type de modèle", model_info["model_type"])
+    else:
+        st.warning("⚠️ Modèle non disponible")
+        st.info("Utilisation du modèle de simulation")
+    
+    st.metric("Races supportées", model_info["breeds_count"])
     
     st.markdown("### 📈 Statistiques")
     if st.session_state.history:
